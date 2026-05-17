@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/audiophore-core",
+    "crates/audiophore-engine",
+    "crates/audiophore-audio",
+    "crates/audiophore-cli",
+    "crates/adapter-core",
+    "crates/adapter-sacn",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.78"
+authors = ["Aaron Cupp <aaron@mrcupp.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/audiophore/audiophore"
+homepage = "https://audiophore.dev"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"

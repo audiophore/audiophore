@@ -1,0 +1,13 @@
+[package]
+name = "audiophore-core"
+description = "Core types, event bus, and trait vocabulary for Audiophore."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true

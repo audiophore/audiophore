@@ -1,0 +1,13 @@
+[package]
+name = "audiophore-engine"
+description = "Mapping layer, scheduling, and show-file handling for Audiophore."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true

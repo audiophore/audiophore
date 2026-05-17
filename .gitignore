@@ -1,0 +1,26 @@
+# claude-project-kit — managed block START
+# Local-only Claude Code state — installed globally via install-commands.sh
+# or scoped per-project, but never committed to the source-code repo.
+.claude/
+
+# macOS
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+# claude-project-kit — managed block END
+
+# Rust
+/target
+**/*.rs.bk
+
+# Env / secrets
+.env
+.env.local
