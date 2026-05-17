@@ -1,4 +1,4 @@
-//! `adapter-sacn`: E1.31 / sACN output adapter.
+//! `audiophore-adapter-sacn`: E1.31 / sACN output adapter.
 //!
 //! M1 target: deliver hardcoded Synesthesia-derived frames to a WLED
 //! controller over E1.31. Multi-universe handling is required even at

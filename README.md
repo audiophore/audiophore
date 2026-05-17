@@ -18,11 +18,11 @@ crates/
 ├── audiophore-engine/  # mapping, scheduling, show files
 ├── audiophore-audio/   # OSC ingress, audio frame production
 ├── audiophore-cli/     # binary entry point
-├── adapter-core/       # adapter trait + capability flags
-└── adapter-sacn/       # E1.31 / sACN adapter (M1 target)
+├── audiophore-adapter-core/   # adapter trait + capability flags
+└── audiophore-adapter-sacn/   # E1.31 / sACN adapter (M1 target)
 ```
 
-Remaining adapter crates (`adapter-artnet`, `adapter-ddp`, `adapter-hue`, `adapter-nanoleaf`, `adapter-osc`, `adapter-etherdream`) and the `audiophore-script` / `audiophore-api` crates and `ui/` frontend are added as their milestones kick off. The full target layout is documented in [`planning/IMPLEMENTATION_PLAN.md`](https://github.com/audiophore/planning/blob/main/IMPLEMENTATION_PLAN.md) *Workspace layout*.
+Remaining adapter crates (`audiophore-adapter-artnet`, `audiophore-adapter-ddp`, `audiophore-adapter-hue`, `audiophore-adapter-nanoleaf`, `audiophore-adapter-osc`, `audiophore-adapter-etherdream`) and the `audiophore-script` / `audiophore-api` crates and `ui/` frontend are added as their milestones kick off. The full target layout is documented in [`planning/IMPLEMENTATION_PLAN.md`](https://github.com/audiophore/planning/blob/main/IMPLEMENTATION_PLAN.md) *Workspace layout*.
 
 ## Building
 
