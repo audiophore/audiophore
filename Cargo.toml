@@ -5,8 +5,8 @@ members = [
     "crates/audiophore-engine",
     "crates/audiophore-audio",
     "crates/audiophore-cli",
-    "crates/adapter-core",
-    "crates/adapter-sacn",
+    "crates/audiophore-adapter-core",
+    "crates/audiophore-adapter-sacn",
 ]
 
 [workspace.package]

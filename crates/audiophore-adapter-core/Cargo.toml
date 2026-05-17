@@ -1,5 +1,5 @@
 [package]
-name = "adapter-core"
+name = "audiophore-adapter-core"
 description = "Adapter trait and capability flags shared by every Audiophore output adapter."
 version.workspace = true
 edition.workspace = true

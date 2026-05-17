@@ -3,11 +3,11 @@
 version = 3
 
 [[package]]
-name = "adapter-core"
+name = "audiophore-adapter-core"
 version = "0.1.0"
 
 [[package]]
-name = "adapter-sacn"
+name = "audiophore-adapter-sacn"
 version = "0.1.0"
 
 [[package]]
