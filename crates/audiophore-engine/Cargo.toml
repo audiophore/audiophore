@@ -9,5 +9,16 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[dependencies]
+audiophore-core = { path = "../audiophore-core", version = "0.1" }
+audiophore-adapter-core = { path = "../audiophore-adapter-core", version = "0.1" }
+arc-swap = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "test-util"] }
+async-trait = "0.1"
+
 [lints]
 workspace = true
