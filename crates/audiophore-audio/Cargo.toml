@@ -11,7 +11,7 @@ homepage.workspace = true
 
 [dependencies]
 audiophore-core = { path = "../audiophore-core", version = "0.1" }
-rosc = { version = "0.11", default-features = false }
+rosc = "0.11"
 tokio = { version = "1", features = ["net", "rt", "macros", "sync"] }
 thiserror = "2"
 tracing = "0.1"

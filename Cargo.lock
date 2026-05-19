@@ -2762,6 +2762,7 @@ checksum = "dd37602e1513794e952274082d074e8d31aa7f64d047e3acb746c91db40600a5"
 dependencies = [
  "byteorder",
  "nom",
+ "time",
 ]
 
 [[package]]
