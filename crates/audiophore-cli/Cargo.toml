@@ -16,11 +16,18 @@ workspace = true
 name = "audiophore"
 path = "src/main.rs"
 
-[dev-dependencies]
+[dependencies]
+audiophore-audio = { path = "../audiophore-audio", version = "0.1" }
 audiophore-core = { path = "../audiophore-core", version = "0.1" }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+rosc = "0.11"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
 audiophore-adapter-core = { path = "../audiophore-adapter-core", version = "0.1" }
 audiophore-adapter-sacn = { path = "../audiophore-adapter-sacn", version = "0.1" }
-audiophore-audio = { path = "../audiophore-audio", version = "0.1" }
 audiophore-engine = { path = "../audiophore-engine", version = "0.1" }
-rosc = "0.11"
 tokio = { version = "1", features = ["net", "rt", "rt-multi-thread", "macros", "sync", "time"] }
