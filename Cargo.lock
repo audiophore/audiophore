@@ -144,6 +144,15 @@ dependencies = [
 [[package]]
 name = "audiophore-cli"
 version = "0.1.0"
+dependencies = [
+ "audiophore-adapter-core",
+ "audiophore-adapter-sacn",
+ "audiophore-audio",
+ "audiophore-core",
+ "audiophore-engine",
+ "rosc",
+ "tokio",
+]
 
 [[package]]
 name = "audiophore-core"
