@@ -120,6 +120,15 @@ dependencies = [
 [[package]]
 name = "audiophore-adapter-sacn"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "audiophore-adapter-core",
+ "audiophore-core",
+ "bytes",
+ "thiserror 2.0.18",
+ "tokio",
+ "uuid",
+]
 
 [[package]]
 name = "audiophore-audio"
