@@ -190,8 +190,11 @@ name = "audiophore-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "audiophore-adapter-core",
+ "audiophore-adapter-sacn",
  "audiophore-audio",
  "audiophore-core",
+ "audiophore-engine",
  "clap",
  "rosc",
  "tokio",

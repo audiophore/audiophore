@@ -25,3 +25,9 @@ rosc = "0.11"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+audiophore-adapter-core = { path = "../audiophore-adapter-core", version = "0.1" }
+audiophore-adapter-sacn = { path = "../audiophore-adapter-sacn", version = "0.1" }
+audiophore-engine = { path = "../audiophore-engine", version = "0.1" }
+tokio = { version = "1", features = ["net", "rt", "rt-multi-thread", "macros", "sync", "time"] }
