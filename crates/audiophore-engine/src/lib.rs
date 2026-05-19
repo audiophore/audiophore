@@ -13,12 +13,16 @@
 //! See [`IMPLEMENTATION_PLAN.md` §Scheduling and the event bus](https://github.com/audiophore/planning/blob/main/IMPLEMENTATION_PLAN.md)
 //! for the design context.
 
+pub mod mapping;
+
 use std::sync::Arc;
 use std::time::Duration;
 
 use arc_swap::ArcSwap;
 use audiophore_adapter_core::OutputAdapter;
 use audiophore_core::ResolvedFrame;
+
+pub use mapping::map_m1;
 
 /// Lock-free single-producer / many-consumer snapshot bus.
 ///
