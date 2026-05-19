@@ -55,15 +55,6 @@ ignore = [
     "RUSTSEC-2025-0081",
     "RUSTSEC-2025-0098",
     "RUSTSEC-2025-0100",
-    # time v0.3.45 — DoS via stack exhaustion when parsing untrusted RFC
-    # 2822 dates. Pulled via tauri -> cookie v0.18.1 for webview cookie
-    # handling. Patched in time v0.3.47 which requires Rust 1.88; our MSRV
-    # is 1.85. **Not currently exploitable in this spike** — the .app makes
-    # no network requests and accepts no external cookies. Track an MSRV
-    # bump to 1.88+ separately to unlock the patch; revisit if the app
-    # surface grows to consume HTTPS Set-Cookie headers from external
-    # servers (M2+).
-    "RUSTSEC-2026-0009",
 ]
 
 [sources]
