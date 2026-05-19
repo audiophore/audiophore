@@ -14,13 +14,16 @@ homepage.workspace = true
 name = "audiophore_ui_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
-[build-dependencies]
+# macOS-only by design — research-gui-framework.md §5.8 + DEPLOYMENT.md *Target
+# platforms* lock Linux to headless/engine-only. Gating the Tauri deps to
+# target_os = "macos" keeps `cargo build --workspace` on Linux from pulling
+# webkit2gtk / gtk-rs / wry / tauri's full Linux backend, which we'll never
+# ship. The lib.rs is fully #![cfg(target_os = "macos")]-gated to match.
+[target.'cfg(target_os = "macos")'.build-dependencies]
 tauri-build = { version = "2", features = [] }
 
-[dependencies]
+[target.'cfg(target_os = "macos")'.dependencies]
 tauri = { version = "2", features = [] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 
 # Spike-level overrides: Tauri's generated boilerplate and macro-expanded code do
 # not satisfy workspace pedantic + missing_docs + no-unwrap rules. CI runs with
