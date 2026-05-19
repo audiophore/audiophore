@@ -1,0 +1,43 @@
+[package]
+name = "audiophore-ui"
+description = "Tauri-based desktop GUI for Audiophore (M2 prototype spike)."
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lib]
+name = "audiophore_ui_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+# macOS-only by design — research-gui-framework.md §5.8 + DEPLOYMENT.md *Target
+# platforms* lock Linux to headless/engine-only. Gating the Tauri deps to
+# target_os = "macos" keeps `cargo build --workspace` on Linux from pulling
+# webkit2gtk / gtk-rs / wry / tauri's full Linux backend, which we'll never
+# ship. The lib.rs is fully #![cfg(target_os = "macos")]-gated to match.
+[target.'cfg(target_os = "macos")'.build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri = { version = "2", features = [] }
+
+# Spike-level overrides: Tauri's generated boilerplate and macro-expanded code do
+# not satisfy workspace pedantic + missing_docs + no-unwrap rules. CI runs with
+# RUSTFLAGS=-D warnings, so workspace warns become errors. Relax for this crate
+# only; revisit when the GUI surface is real (M2).
+#
+# Cargo does not merge crate-level [lints] with [workspace.lints]; specifying
+# this table here means workspace lints don't apply. Re-state unsafe_code = deny
+# explicitly so the project-wide security baseline still covers our own code.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "allow"
+
+[lints.clippy]
+pedantic = "allow"
+unwrap_used = "allow"
+expect_used = "allow"

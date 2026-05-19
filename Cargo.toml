@@ -7,6 +7,7 @@ members = [
     "crates/audiophore-cli",
     "crates/audiophore-adapter-core",
     "crates/audiophore-adapter-sacn",
+    "crates/audiophore-ui/src-tauri",
 ]
 
 [workspace.package]
