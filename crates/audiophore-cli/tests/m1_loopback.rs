@@ -47,10 +47,8 @@ use std::time::Duration;
 
 use audiophore_adapter_sacn::{ACN_PACKET_IDENTIFIER, SacnAdapterBuilder, gamma_encode};
 use audiophore_audio::Listener;
-use audiophore_core::{
-    AudioFrame, ResolvedFrame, Rgb, Zone, ZoneId, ZoneKind, ZonePayload, ZoneSize,
-};
-use audiophore_engine::{Bus, RenderErrorPolicy, run_adapter};
+use audiophore_core::{ResolvedFrame, Rgb, Zone, ZoneId, ZoneKind, ZonePayload, ZoneSize};
+use audiophore_engine::{Bus, RenderErrorPolicy, map_m1, run_adapter};
 use rosc::{OscBundle, OscMessage, OscPacket, OscTime, OscType, encoder};
 use tokio::net::UdpSocket;
 
@@ -66,10 +64,16 @@ const TEST_UNIVERSE: u16 = 1;
 /// >> a couple of ticks even on a heavily-loaded CI runner.
 const PACKET_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// Build a synthetic Synesthesia-shape OSC bundle that carries the
-/// fields B.3 wants to round-trip: BPM, on-beat, bass level.
-fn synthetic_synesthesia_bundle(bpm: f32, bass: f32, on_beat: bool) -> Vec<u8> {
-    let on_beat_int = i32::from(on_beat);
+/// Build a synthetic Synesthesia-shape OSC bundle carrying the fields
+/// B.3 round-trips: BPM, bass level, and macro intensity.
+///
+/// `on_beat` is deliberately *not* sent: the production `map_m1`
+/// applies an additive beat flash to every channel when `on_beat` is
+/// set, which would lift the green/blue slots off zero. Keeping
+/// `on_beat` false (its default) lets the wire assertions stay a clean
+/// `bass → red, 0 → green, 0 → blue`. The beat-flash path itself is
+/// covered by `audiophore_engine::mapping`'s own unit tests.
+fn synthetic_synesthesia_bundle(bpm: f32, bass: f32, intensity: f32) -> Vec<u8> {
     let bundle = OscPacket::Bundle(OscBundle {
         // Synesthesia emits a real timetag; the listener doesn't gate
         // on it, so any deterministic value works for the test.
@@ -84,34 +88,23 @@ fn synthetic_synesthesia_bundle(bpm: f32, bass: f32, on_beat: bool) -> Vec<u8> {
                 args: vec![OscType::Float(bass)],
             }),
             OscPacket::Message(OscMessage {
-                addr: "/audio/onBeat".to_string(),
-                args: vec![OscType::Int(on_beat_int)],
+                addr: "/audio/intensity".to_string(),
+                args: vec![OscType::Float(intensity)],
             }),
         ],
     });
     encoder::encode(&bundle).expect("encode synthetic OSC bundle")
 }
 
-/// Standalone test mapping: take the [`AudioFrame`] coming out of the
-/// listener and produce a single-zone [`ResolvedFrame`] whose pixels
-/// are painted from `levels.bass`. This stands in for the mapping
-/// layer the engine will own once it lands (M2). Keeping it in the
-/// test keeps B.3 narrow to what A.x already supports.
-fn map_audio_to_resolved(frame: &AudioFrame, tick: u64) -> ResolvedFrame {
-    let pixel = Rgb {
-        r: frame.levels.bass,
-        g: 0.0,
-        b: 0.0,
-    };
-    let pixels: Vec<Rgb> = vec![pixel; PIXEL_COUNT];
-
-    let mut zones = HashMap::new();
-    zones.insert(ZoneId("strip".to_string()), ZonePayload::Pixels(pixels));
-    ResolvedFrame {
-        tick,
-        t: frame.t,
-        zones,
-    }
+/// The single pixel-strip zone the M1 mapping drives in this test.
+fn test_zones() -> Vec<Zone> {
+    vec![Zone {
+        id: ZoneId("strip".to_string()),
+        kind: ZoneKind::PixelStrip,
+        size: ZoneSize::Strip {
+            count: u32::try_from(PIXEL_COUNT).expect("pixel count fits in u32"),
+        },
+    }]
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -134,7 +127,7 @@ async fn m1_loopback_osc_to_sacn_mock_receiver() {
         .await
         .expect("bind OSC sender");
     let bass = 0.8_f32;
-    let bytes = synthetic_synesthesia_bundle(120.0, bass, true);
+    let bytes = synthetic_synesthesia_bundle(120.0, bass, 1.0);
     sender
         .send_to(&bytes, listener_addr)
         .await
@@ -153,8 +146,9 @@ async fn m1_loopback_osc_to_sacn_mock_receiver() {
         audio_frame.bpm,
     );
     assert!(
-        audio_frame.on_beat,
-        "on_beat should have round-tripped as true",
+        (audio_frame.intensity - 1.0).abs() < 1e-4,
+        "intensity round-trip mismatch: got {}",
+        audio_frame.intensity,
     );
     assert!(
         (audio_frame.levels.bass - bass).abs() < 1e-4,
@@ -162,12 +156,15 @@ async fn m1_loopback_osc_to_sacn_mock_receiver() {
         audio_frame.levels.bass,
     );
 
-    // ---- 5. Manually map AudioFrame → ResolvedFrame and publish ------
+    // ---- 5. Map AudioFrame → ResolvedFrame via the real engine
+    //         mapping and publish ------------------------------------
     //
-    // The engine's mapping layer doesn't exist yet (A.2 = bus + run-loop
-    // scaffolding only); the in-test mapping function stands in for it.
+    // With intensity=1.0 and no beat flash, `map_m1` paints every pixel
+    // `(bass, mid, high)` = `(0.8, 0.0, 0.0)`, which is what the wire
+    // assertions below check for.
+    let zones = test_zones();
     let bus = Arc::new(Bus::empty());
-    let resolved = map_audio_to_resolved(&audio_frame, 1);
+    let resolved = map_m1(&audio_frame, &zones, 1);
     bus.publish(resolved);
 
     // ---- 6. Build the sACN adapter targeting the mock receiver -------

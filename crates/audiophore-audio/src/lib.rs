@@ -109,10 +109,30 @@ impl Listener {
     /// Returns [`IngressError::Io`] if the underlying socket fails or
     /// [`IngressError::Decode`] if `rosc` rejects the datagram.
     pub async fn recv(&mut self) -> Result<AudioFrame, IngressError> {
+        let (frame, _packet, _peer) = self.recv_with_packet().await?;
+        Ok(frame)
+    }
+
+    /// Receive one OSC datagram and return the resulting
+    /// [`AudioFrame`] snapshot **plus** the decoded [`OscPacket`] and
+    /// the sender's address.
+    ///
+    /// Decodes the datagram exactly once. Inspection surfaces — e.g.
+    /// `audiophore monitor --raw` — use this to print the raw OSC
+    /// structure without re-decoding what [`recv`](Self::recv) already
+    /// parsed.
+    ///
+    /// # Errors
+    /// Returns [`IngressError::Io`] if the underlying socket fails or
+    /// [`IngressError::Decode`] if `rosc` rejects the datagram.
+    pub async fn recv_with_packet(
+        &mut self,
+    ) -> Result<(AudioFrame, OscPacket, SocketAddr), IngressError> {
         let (n, peer) = self.socket.recv_from(&mut self.buf).await?;
         tracing::trace!(bytes = n, %peer, "OSC datagram received");
-        dispatch_packet(&self.buf[..n], &mut self.builder)?;
-        Ok(self.builder.snapshot())
+        let (_, packet) = rosc::decoder::decode_udp(&self.buf[..n])?;
+        apply_packet(&packet, &mut self.builder);
+        Ok((self.builder.snapshot(), packet, peer))
     }
 
     /// Borrow the underlying builder for tests / monitoring surfaces
@@ -135,15 +155,15 @@ impl Listener {
 /// rejects the bytes.
 pub fn dispatch_packet(bytes: &[u8], builder: &mut AudioFrameBuilder) -> Result<(), IngressError> {
     let (_, packet) = rosc::decoder::decode_udp(bytes)?;
-    apply_packet(packet, builder);
+    apply_packet(&packet, builder);
     Ok(())
 }
 
-fn apply_packet(packet: OscPacket, builder: &mut AudioFrameBuilder) {
+fn apply_packet(packet: &OscPacket, builder: &mut AudioFrameBuilder) {
     match packet {
-        OscPacket::Message(msg) => apply_message(&msg, builder),
+        OscPacket::Message(msg) => apply_message(msg, builder),
         OscPacket::Bundle(bundle) => {
-            for inner in bundle.content {
+            for inner in &bundle.content {
                 apply_packet(inner, builder);
             }
         }
@@ -489,5 +509,32 @@ mod tests {
         // fields but clears on_beat.
         let mirror = listener.builder().clone();
         assert!((mirror.bpm() - 140.0).abs() < 1e-4);
+    }
+
+    #[tokio::test]
+    async fn recv_with_packet_returns_frame_and_decoded_packet() {
+        let listener = Listener::bind("127.0.0.1:0").await.expect("bind");
+        let bound = listener.local_addr().expect("local addr");
+
+        let sender = tokio::net::UdpSocket::bind("127.0.0.1:0")
+            .await
+            .expect("bind sender");
+        let bytes = encode_bundle(vec![
+            ("/audio/bpm", vec![OscType::Float(96.0)]),
+            ("/audio/midLevel", vec![OscType::Float(0.33)]),
+        ]);
+        sender.send_to(&bytes, bound).await.expect("send");
+
+        let mut listener = listener;
+        let (frame, packet, peer) = listener.recv_with_packet().await.expect("recv_with_packet");
+        assert!((frame.bpm - 96.0).abs() < 1e-4);
+        assert!((frame.levels.mid - 0.33).abs() < 1e-4);
+        assert!(peer.ip().is_loopback(), "expected loopback sender");
+        // The returned packet is the decoded bundle, available for raw
+        // inspection without a second decode.
+        match packet {
+            OscPacket::Bundle(b) => assert_eq!(b.content.len(), 2),
+            OscPacket::Message(_) => panic!("expected a bundle"),
+        }
     }
 }
