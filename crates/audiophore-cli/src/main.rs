@@ -21,12 +21,11 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use audiophore_adapter_sacn::{MAX_RGB_PIXELS_PER_UNIVERSE, SACN_PORT, SacnAdapterBuilder};
-use audiophore_audio::{AudioFrameBuilder, Listener, RECV_BUFFER_BYTES, dispatch_packet};
+use audiophore_audio::Listener;
 use audiophore_core::{AudioFrame, Zone, ZoneId, ZoneKind, ZoneSize};
 use audiophore_engine::{Bus, RenderErrorPolicy, map_m1, run_adapter};
 use clap::{Parser, Subcommand};
 use rosc::{OscPacket, OscType};
-use tokio::net::UdpSocket;
 
 /// Top-level CLI parser.
 #[derive(Debug, Parser)]
@@ -219,15 +218,18 @@ async fn run_pipeline(args: RunArgs) -> Result<()> {
     Ok(())
 }
 
-/// Run the `monitor` subcommand: bind a UDP socket, decode each
-/// datagram with [`dispatch_packet`], print one frame per line plus an
-/// optional raw OSC dump.
+/// Run the `monitor` subcommand: drive an [`audiophore_audio::Listener`],
+/// print one frame per line plus an optional raw OSC dump.
+///
+/// The `--raw` dump reuses the [`OscPacket`] the listener already decoded
+/// (via [`Listener::recv_with_packet`]) rather than decoding the datagram
+/// a second time.
 async fn run_monitor(args: MonitorArgs) -> Result<()> {
     let addr = SocketAddr::new(args.bind, args.port);
-    let socket = UdpSocket::bind(addr)
+    let mut listener = Listener::bind(addr)
         .await
-        .with_context(|| format!("binding UDP socket on {addr}"))?;
-    let bound = socket
+        .with_context(|| format!("binding OSC listener on {addr}"))?;
+    let bound = listener
         .local_addr()
         .context("querying local UDP socket address")?;
     tracing::info!(addr = %bound, raw = args.raw, "audiophore monitor listening");
@@ -236,8 +238,6 @@ async fn run_monitor(args: MonitorArgs) -> Result<()> {
         "# columns: t\\tbpm\\tbeat_phase\\ton_beat\\tlevels.bass\\tlevels.mid\\tlevels.high\\tintensity\\tfade"
     );
 
-    let mut builder = AudioFrameBuilder::new();
-    let mut buf = vec![0_u8; RECV_BUFFER_BYTES];
     let mut shutdown = std::pin::pin!(tokio::signal::ctrl_c());
 
     loop {
@@ -248,18 +248,18 @@ async fn run_monitor(args: MonitorArgs) -> Result<()> {
                 tracing::info!("shutdown requested; exiting");
                 break;
             }
-            recv = socket.recv_from(&mut buf) => {
-                let (n, peer) = recv.context("receiving UDP datagram")?;
-                let bytes = &buf[..n];
-                if args.raw {
-                    dump_raw(bytes, peer);
+            recv = listener.recv_with_packet() => {
+                match recv {
+                    Ok((frame, packet, peer)) => {
+                        if args.raw {
+                            walk_for_raw(&packet, peer);
+                        }
+                        println!("{}", format_frame(&frame));
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "skipped malformed OSC datagram");
+                    }
                 }
-                if let Err(e) = dispatch_packet(bytes, &mut builder) {
-                    tracing::warn!(error = %e, %peer, "skipped malformed OSC datagram");
-                    continue;
-                }
-                let frame = builder.snapshot();
-                println!("{}", format_frame(&frame));
             }
         }
     }
@@ -286,20 +286,9 @@ fn format_frame(f: &AudioFrame) -> String {
     )
 }
 
-/// Decode `bytes` for inspection only and print every contained OSC
-/// message's address + argument shape, one per line.
-///
-/// Best-effort: malformed datagrams are surfaced as a single warning
-/// line so the dispatch path can still log its own error context.
-fn dump_raw(bytes: &[u8], peer: SocketAddr) {
-    match rosc::decoder::decode_udp(bytes) {
-        Ok((_, packet)) => walk_for_raw(&packet, peer),
-        Err(e) => {
-            tracing::warn!(error = ?e, %peer, "raw: failed to decode OSC for dump");
-        }
-    }
-}
-
+/// Print every OSC message in `packet`'s address + argument shape, one
+/// per line. Operates on the already-decoded packet handed back by
+/// [`Listener::recv_with_packet`] — no second decode.
 fn walk_for_raw(packet: &OscPacket, peer: SocketAddr) {
     match packet {
         OscPacket::Message(msg) => {
