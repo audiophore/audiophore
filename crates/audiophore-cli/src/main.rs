@@ -1,19 +1,29 @@
 //! `audiophore-cli`: binary entry point.
 //!
 //! Hosts the top-level `audiophore` binary and its `clap`-derived
-//! subcommand router. M1 ships the [`monitor`](Command::Monitor)
-//! subcommand: a thin wrapper around [`audiophore_audio::dispatch_packet`]
-//! that listens on a UDP port, decodes Synesthesia OSC, and pretty-prints
-//! each resulting [`audiophore_core::AudioFrame`].
+//! subcommand router. M1 ships two subcommands:
+//!
+//! - [`monitor`](Command::Monitor) — a thin wrapper around
+//!   [`audiophore_audio::dispatch_packet`] that listens on a UDP port,
+//!   decodes Synesthesia OSC, and pretty-prints each resulting
+//!   [`audiophore_core::AudioFrame`].
+//! - [`run`](Command::Run) — the full M1 pipeline: OSC ingress →
+//!   [`audiophore_engine::map_m1`] → [`audiophore_engine::Bus`] →
+//!   [`audiophore_adapter_sacn::SacnAdapter`] driving a WLED controller
+//!   over E1.31.
 //!
 //! See `implementation.md` §1.5 and `planning/SYNESTHESIA_OSC.md`
 //! *Sanity-check tooling to write early* for the design context.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
-use audiophore_audio::{AudioFrameBuilder, RECV_BUFFER_BYTES, dispatch_packet};
-use audiophore_core::AudioFrame;
+use audiophore_adapter_sacn::{MAX_RGB_PIXELS_PER_UNIVERSE, SACN_PORT, SacnAdapterBuilder};
+use audiophore_audio::{AudioFrameBuilder, Listener, RECV_BUFFER_BYTES, dispatch_packet};
+use audiophore_core::{AudioFrame, Zone, ZoneId, ZoneKind, ZoneSize};
+use audiophore_engine::{Bus, RenderErrorPolicy, map_m1, run_adapter};
 use clap::{Parser, Subcommand};
 use rosc::{OscPacket, OscType};
 use tokio::net::UdpSocket;
@@ -32,6 +42,8 @@ struct Cli {
 enum Command {
     /// Listen on UDP for Synesthesia OSC and pretty-print each frame.
     Monitor(MonitorArgs),
+    /// Run the full M1 pipeline: OSC ingress → mapping → E1.31 output.
+    Run(RunArgs),
 }
 
 /// Arguments for `audiophore monitor`.
@@ -52,12 +64,51 @@ struct MonitorArgs {
     raw: bool,
 }
 
+/// Arguments for `audiophore run`.
+#[derive(Debug, clap::Args)]
+struct RunArgs {
+    /// UDP port to listen on for Synesthesia OSC.
+    #[arg(long, default_value_t = 9000)]
+    osc_port: u16,
+
+    /// Address to bind the OSC listener. Defaults to all interfaces.
+    #[arg(long, default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
+    osc_bind: IpAddr,
+
+    /// IP address of the WLED / E1.31 controller to drive.
+    #[arg(long)]
+    sacn_host: IpAddr,
+
+    /// Destination UDP port for E1.31 (sACN standard port `5568`).
+    #[arg(long, default_value_t = SACN_PORT)]
+    sacn_port: u16,
+
+    /// Number of pixels in the strip. The universe count is derived from
+    /// this (170 RGB pixels per E1.31 universe).
+    #[arg(long, default_value_t = 300)]
+    pixels: u32,
+
+    /// First E1.31 universe number. Consecutive universes are used for
+    /// strips spanning more than one universe.
+    #[arg(long, default_value_t = 1)]
+    start_universe: u16,
+
+    /// Logical zone id for the strip.
+    #[arg(long, default_value = "strip")]
+    zone_id: String,
+
+    /// Adapter render rate in frames per second.
+    #[arg(long, default_value_t = 44)]
+    fps: u16,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     init_tracing();
     let cli = Cli::parse();
     match cli.command {
         Command::Monitor(args) => run_monitor(args).await,
+        Command::Run(args) => run_pipeline(args).await,
     }
 }
 
@@ -72,6 +123,100 @@ fn init_tracing() {
         .with_env_filter(filter)
         .with_target(false)
         .try_init();
+}
+
+/// Derive the consecutive E1.31 universe list for a `pixels`-long strip,
+/// starting at `start`.
+///
+/// Each universe carries up to [`MAX_RGB_PIXELS_PER_UNIVERSE`] (170) RGB
+/// pixels (510 of the 512 DMX slots). A 300-pixel strip → 2 universes.
+fn universes_for(pixels: u32, start: u16) -> Vec<u16> {
+    let per = u32::try_from(MAX_RGB_PIXELS_PER_UNIVERSE).unwrap_or(u32::MAX);
+    let count = pixels.div_ceil(per).max(1);
+    (0..count)
+        .map(|i| start.saturating_add(u16::try_from(i).unwrap_or(u16::MAX)))
+        .collect()
+}
+
+/// Run the `run` subcommand: wire the full M1 pipeline together.
+///
+/// Spawns the sACN adapter render loop as a background task, then drives
+/// the OSC listener on the main task: each received [`AudioFrame`] is
+/// mapped to a [`audiophore_core::ResolvedFrame`] via [`map_m1`] and
+/// published to the shared [`Bus`]. Runs until `ctrl-c`.
+async fn run_pipeline(args: RunArgs) -> Result<()> {
+    let zones = vec![Zone {
+        id: ZoneId(args.zone_id.clone()),
+        kind: ZoneKind::PixelStrip,
+        size: ZoneSize::Strip { count: args.pixels },
+    }];
+    let universes = universes_for(args.pixels, args.start_universe);
+    let rate = Duration::from_secs_f64(1.0 / f64::from(args.fps.max(1)));
+
+    let adapter = SacnAdapterBuilder::new("sacn", args.sacn_host)
+        .target_port(args.sacn_port)
+        .universes(universes.clone())
+        .zones(zones.clone())
+        .native_rate(rate)
+        .source_name("audiophore")
+        .build()
+        .context("building sACN adapter")?;
+
+    let bus = Arc::new(Bus::empty());
+    let adapter_task = tokio::spawn(run_adapter(
+        Box::new(adapter),
+        Arc::clone(&bus),
+        RenderErrorPolicy::LogAndContinue,
+    ));
+
+    let mut listener = Listener::bind(SocketAddr::new(args.osc_bind, args.osc_port))
+        .await
+        .with_context(|| {
+            format!(
+                "binding OSC listener on {}:{}",
+                args.osc_bind, args.osc_port
+            )
+        })?;
+    let bound = listener
+        .local_addr()
+        .context("querying OSC listener addr")?;
+    tracing::info!(
+        osc = %bound,
+        sacn_host = %args.sacn_host,
+        sacn_port = args.sacn_port,
+        pixels = args.pixels,
+        universes = ?universes,
+        fps = args.fps,
+        "audiophore run: pipeline up",
+    );
+
+    let mut tick: u64 = 0;
+    let mut shutdown = std::pin::pin!(tokio::signal::ctrl_c());
+    loop {
+        tokio::select! {
+            biased;
+            res = shutdown.as_mut() => {
+                res.context("installing ctrl-c handler")?;
+                tracing::info!("shutdown requested; stopping pipeline");
+                break;
+            }
+            recv = listener.recv() => {
+                match recv {
+                    Ok(frame) => {
+                        let resolved = map_m1(&frame, &zones, tick);
+                        bus.publish(resolved);
+                        tick = tick.wrapping_add(1);
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "OSC ingress error; continuing");
+                    }
+                }
+            }
+        }
+    }
+
+    adapter_task.abort();
+    Ok(())
 }
 
 /// Run the `monitor` subcommand: bind a UDP socket, decode each
@@ -241,7 +386,7 @@ fn truncate_str(s: &str, n: usize) -> String {
     reason = "tests panic on assertion failure by design"
 )]
 mod tests {
-    use super::{Cli, fmt_args, format_frame, truncate_str};
+    use super::{Cli, fmt_args, format_frame, truncate_str, universes_for};
     use audiophore_core::{AudioFrame, BandValues};
     use clap::Parser;
     use rosc::OscType;
@@ -321,6 +466,7 @@ mod tests {
                 assert_eq!(args.port, 9000);
                 assert!(!args.raw);
             }
+            super::Command::Run(_) => panic!("expected Monitor"),
         }
     }
 
@@ -333,6 +479,46 @@ mod tests {
                 assert_eq!(args.port, 9001);
                 assert!(args.raw);
             }
+            super::Command::Run(_) => panic!("expected Monitor"),
         }
+    }
+
+    #[test]
+    fn cli_parses_run_with_required_host_and_defaults() {
+        let cli =
+            Cli::try_parse_from(["audiophore", "run", "--sacn-host", "10.0.0.5"]).expect("parse");
+        match cli.command {
+            super::Command::Run(args) => {
+                assert_eq!(args.sacn_host.to_string(), "10.0.0.5");
+                assert_eq!(args.osc_port, 9000);
+                assert_eq!(args.sacn_port, 5568);
+                assert_eq!(args.pixels, 300);
+                assert_eq!(args.start_universe, 1);
+                assert_eq!(args.zone_id, "strip");
+                assert_eq!(args.fps, 44);
+            }
+            super::Command::Monitor(_) => panic!("expected Run"),
+        }
+    }
+
+    #[test]
+    fn cli_run_requires_sacn_host() {
+        // `--sacn-host` has no default, so omitting it is a parse error.
+        let err = Cli::try_parse_from(["audiophore", "run"]);
+        assert!(err.is_err(), "run without --sacn-host should fail to parse");
+    }
+
+    #[test]
+    fn universes_derived_from_pixel_count() {
+        assert_eq!(universes_for(1, 1), vec![1]);
+        assert_eq!(universes_for(170, 1), vec![1]);
+        assert_eq!(universes_for(171, 1), vec![1, 2]);
+        assert_eq!(universes_for(300, 1), vec![1, 2]);
+        assert_eq!(universes_for(340, 1), vec![1, 2]);
+        assert_eq!(universes_for(341, 1), vec![1, 2, 3]);
+        // zero pixels still yields at least one universe.
+        assert_eq!(universes_for(0, 5), vec![5]);
+        // start offset is honored.
+        assert_eq!(universes_for(300, 10), vec![10, 11]);
     }
 }
