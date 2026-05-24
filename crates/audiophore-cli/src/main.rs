@@ -273,11 +273,11 @@ async fn run_monitor(args: MonitorArgs) -> Result<()> {
 /// `t  bpm  beat_phase  on_beat  levels.bass  levels.mid  levels.high  intensity  fade`.
 fn format_frame(f: &AudioFrame) -> String {
     format!(
-        "{t:.4}\t{bpm:.2}\t{phase:.4}\t{beat}\t{bass:.4}\t{mid:.4}\t{high:.4}\t{intensity:.4}\t{fade:.4}",
+        "{t:.4}\t{bpm:.2}\t{phase:.4}\t{beat:.4}\t{bass:.4}\t{mid:.4}\t{high:.4}\t{intensity:.4}\t{fade:.4}",
         t = f.t,
         bpm = f.bpm,
         phase = f.beat_phase,
-        beat = u8::from(f.on_beat),
+        beat = f.on_beat,
         bass = f.levels.bass,
         mid = f.levels.mid,
         high = f.levels.high,
@@ -386,7 +386,7 @@ mod tests {
             bpm: 128.5,
             bpm_confidence: 0.9,
             beat_phase: 0.5,
-            on_beat: true,
+            on_beat: 0.93,
             levels: BandValues {
                 whole: 0.7,
                 bass: 0.75,
@@ -409,18 +409,18 @@ mod tests {
         // Spot-check the ones that drive downstream wire-dump parsing.
         assert!(cols[0].starts_with("12.345"), "t column: {}", cols[0]);
         assert_eq!(cols[1], "128.50", "bpm column");
-        assert_eq!(cols[3], "1", "on_beat column should be 0|1");
+        assert_eq!(cols[3], "0.9300", "on_beat envelope column (4dp float)");
         assert_eq!(cols[4], "0.7500", "levels.bass column");
         assert_eq!(cols[7], "0.4200", "intensity column");
         assert_eq!(cols[8], "0.8800", "fade column");
     }
 
     #[test]
-    fn format_frame_on_beat_false_renders_zero() {
+    fn format_frame_on_beat_zero_renders_zero() {
         let mut f = sample_frame();
-        f.on_beat = false;
+        f.on_beat = 0.0;
         let cols: Vec<String> = format_frame(&f).split('\t').map(str::to_owned).collect();
-        assert_eq!(cols[3], "0");
+        assert_eq!(cols[3], "0.0000");
     }
 
     #[test]
