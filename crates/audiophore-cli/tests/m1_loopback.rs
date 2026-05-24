@@ -67,12 +67,12 @@ const PACKET_TIMEOUT: Duration = Duration::from_secs(2);
 /// Build a synthetic Synesthesia-shape OSC bundle carrying the fields
 /// B.3 round-trips: BPM, bass level, and macro intensity.
 ///
-/// `on_beat` is deliberately *not* sent: the production `map_m1`
-/// applies an additive beat flash to every channel when `on_beat` is
-/// set, which would lift the green/blue slots off zero. Keeping
-/// `on_beat` false (its default) lets the wire assertions stay a clean
-/// `bass → red, 0 → green, 0 → blue`. The beat-flash path itself is
-/// covered by `audiophore_engine::mapping`'s own unit tests.
+/// `/audio/beat/onbeat` is deliberately *not* sent: the production
+/// `map_m1` adds a beat flash of `0.3 * on_beat` to every channel, which
+/// would lift the green/blue slots off zero. Leaving `on_beat` at its
+/// `0.0` default keeps the wire assertions a clean `bass → red, 0 →
+/// green, 0 → blue`. The beat-flash path itself is covered by
+/// `audiophore_engine::mapping`'s own unit tests.
 fn synthetic_synesthesia_bundle(bpm: f32, bass: f32, intensity: f32) -> Vec<u8> {
     let bundle = OscPacket::Bundle(OscBundle {
         // Synesthesia emits a real timetag; the listener doesn't gate
@@ -80,15 +80,15 @@ fn synthetic_synesthesia_bundle(bpm: f32, bass: f32, intensity: f32) -> Vec<u8> 
         timetag: OscTime::from((0, 1)),
         content: vec![
             OscPacket::Message(OscMessage {
-                addr: "/audio/bpm".to_string(),
+                addr: "/audio/bpm/bpm".to_string(),
                 args: vec![OscType::Float(bpm)],
             }),
             OscPacket::Message(OscMessage {
-                addr: "/audio/bassLevel".to_string(),
+                addr: "/audio/level/bass".to_string(),
                 args: vec![OscType::Float(bass)],
             }),
             OscPacket::Message(OscMessage {
-                addr: "/audio/intensity".to_string(),
+                addr: "/audio/energy/intensity".to_string(),
                 args: vec![OscType::Float(intensity)],
             }),
         ],

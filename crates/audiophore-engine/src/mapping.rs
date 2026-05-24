@@ -19,8 +19,9 @@ use audiophore_core::{AudioFrame, ResolvedFrame, Rgb, Zone, ZoneKind, ZonePayloa
 /// - **Red channel** = `audio.levels.bass * audio.intensity`
 /// - **Green channel** = `audio.levels.mid * audio.intensity`
 /// - **Blue channel** = `audio.levels.high * audio.intensity`
-/// - When `audio.on_beat` is true, an additive `0.3` flash is applied to
-///   every channel (so beats register even on quiet inputs).
+/// - An additive flash of `0.3 * audio.on_beat` (the beat envelope) is
+///   applied to every channel, so beats register even on quiet inputs and
+///   the flash decays as the envelope decays.
 /// - All channels clamp to `0.0..=1.0` before being written.
 ///
 /// Every pixel in a strip receives the same color — uniform / no spatial
@@ -62,7 +63,9 @@ pub fn map_m1(audio: &AudioFrame, zones: &[Zone], tick: u64) -> ResolvedFrame {
 /// Uniform color across the strip — see [`map_m1`] doc comment.
 fn build_strip_pixels(audio: &AudioFrame, count: usize) -> Vec<Rgb> {
     let intensity = audio.intensity.clamp(0.0, 1.0);
-    let beat_boost = if audio.on_beat { 0.3 } else { 0.0 };
+    // `on_beat` is a 0.0..=1.0 envelope; scaling the flash by it makes the
+    // beat boost decay with the envelope instead of switching on/off.
+    let beat_boost = 0.3 * audio.on_beat.clamp(0.0, 1.0);
     let r = (audio.levels.bass * intensity + beat_boost).clamp(0.0, 1.0);
     let g = (audio.levels.mid * intensity + beat_boost).clamp(0.0, 1.0);
     let b = (audio.levels.high * intensity + beat_boost).clamp(0.0, 1.0);
@@ -97,7 +100,7 @@ mod tests {
         }
     }
 
-    fn frame_with(levels: BandValues, intensity: f32, on_beat: bool, t: f64) -> AudioFrame {
+    fn frame_with(levels: BandValues, intensity: f32, on_beat: f32, t: f64) -> AudioFrame {
         AudioFrame {
             t,
             bpm: 120.0,
@@ -115,7 +118,7 @@ mod tests {
     #[test]
     fn zero_audio_produces_all_black_pixels() {
         let zones = vec![strip_zone("strip", 8)];
-        let audio = frame_with(BandValues::default(), 0.0, false, 0.0);
+        let audio = frame_with(BandValues::default(), 0.0, 0.0, 0.0);
 
         let resolved = map_m1(&audio, &zones, 0);
 
@@ -142,7 +145,7 @@ mod tests {
             mid_high: 0.0,
             high: 0.2,
         };
-        let audio = frame_with(levels, 1.0, false, 0.0);
+        let audio = frame_with(levels, 1.0, 0.0, 0.0);
 
         let resolved = map_m1(&audio, &zones, 7);
 
@@ -168,7 +171,7 @@ mod tests {
             mid_high: 0.0,
             high: 1.0,
         };
-        let audio = frame_with(levels, 0.5, false, 0.0);
+        let audio = frame_with(levels, 0.5, 0.0, 0.0);
 
         let resolved = map_m1(&audio, &zones, 0);
 
@@ -184,7 +187,7 @@ mod tests {
     #[test]
     fn on_beat_adds_white_flash_even_at_zero_levels() {
         let zones = vec![strip_zone("strip", 1)];
-        let audio = frame_with(BandValues::default(), 0.0, true, 0.0);
+        let audio = frame_with(BandValues::default(), 0.0, 1.0, 0.0);
 
         let resolved = map_m1(&audio, &zones, 0);
 
@@ -198,6 +201,24 @@ mod tests {
     }
 
     #[test]
+    fn on_beat_envelope_scales_flash() {
+        // A half-strength beat envelope yields half the flash (0.15), so
+        // the boost decays smoothly with the envelope rather than gating.
+        let zones = vec![strip_zone("strip", 1)];
+        let audio = frame_with(BandValues::default(), 0.0, 0.5, 0.0);
+
+        let resolved = map_m1(&audio, &zones, 0);
+
+        let ZonePayload::Pixels(pixels) = resolved.zones.values().next().unwrap() else {
+            panic!("expected Pixels payload");
+        };
+        let pixel = pixels[0];
+        assert!((pixel.r - 0.15).abs() < 1e-6);
+        assert!((pixel.g - 0.15).abs() < 1e-6);
+        assert!((pixel.b - 0.15).abs() < 1e-6);
+    }
+
+    #[test]
     fn channels_clamp_at_one() {
         let zones = vec![strip_zone("strip", 1)];
         let levels = BandValues {
@@ -208,7 +229,7 @@ mod tests {
             high: 1.0,
         };
         // intensity=1.0 plus beat_boost=0.3 would yield 1.3 — must clamp.
-        let audio = frame_with(levels, 1.0, true, 0.0);
+        let audio = frame_with(levels, 1.0, 1.0, 0.0);
 
         let resolved = map_m1(&audio, &zones, 0);
 
@@ -233,7 +254,7 @@ mod tests {
         };
         // Synthetic out-of-range intensity. Source should never produce
         // this, but the mapping must not amplify garbage past 1.0.
-        let audio = frame_with(levels, 5.0, false, 0.0);
+        let audio = frame_with(levels, 5.0, 0.0, 0.0);
 
         let resolved = map_m1(&audio, &zones, 0);
 
@@ -245,7 +266,7 @@ mod tests {
 
     #[test]
     fn empty_zone_list_yields_empty_resolved_frame() {
-        let audio = frame_with(BandValues::default(), 1.0, false, 0.0);
+        let audio = frame_with(BandValues::default(), 1.0, 0.0, 0.0);
 
         let resolved = map_m1(&audio, &[], 42);
 
@@ -256,7 +277,7 @@ mod tests {
     #[test]
     fn non_pixel_strip_zones_are_skipped() {
         let zones = vec![strip_zone("strip", 2), fixture_zone("par-can")];
-        let audio = frame_with(BandValues::default(), 1.0, false, 0.0);
+        let audio = frame_with(BandValues::default(), 1.0, 0.0, 0.0);
 
         let resolved = map_m1(&audio, &zones, 0);
 
@@ -268,7 +289,7 @@ mod tests {
     #[test]
     fn multiple_pixel_strip_zones_are_all_populated() {
         let zones = vec![strip_zone("left", 5), strip_zone("right", 3)];
-        let audio = frame_with(BandValues::default(), 1.0, false, 1.5);
+        let audio = frame_with(BandValues::default(), 1.0, 0.0, 1.5);
 
         let resolved = map_m1(&audio, &zones, 11);
 

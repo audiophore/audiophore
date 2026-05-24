@@ -25,16 +25,16 @@ pub const BPM_MAX: f32 = 220.0;
 /// has sensible levels even if Synesthesia happened to skip a level
 /// update on tick `N`.
 ///
-/// `on_beat` is the one exception: it represents a one-tick event and
-/// is cleared by [`AudioFrameBuilder::snapshot`] so the engine sees a
-/// single `true` per beat.
+/// `on_beat` is a continuous beat *envelope* (`0.0..=1.0`): like the other
+/// continuous fields it retains its last observed value across snapshots,
+/// tracking the decay of Synesthesia's `/audio/beat/onbeat`.
 #[derive(Clone, Debug)]
 pub struct AudioFrameBuilder {
     t: f64,
     bpm: f32,
     bpm_confidence: f32,
     beat_phase: f32,
-    on_beat: bool,
+    on_beat: f32,
     levels: BandValues,
     hits: BandValues,
     presence: BandValues,
@@ -50,7 +50,7 @@ impl Default for AudioFrameBuilder {
             bpm: 120.0,
             bpm_confidence: 0.0,
             beat_phase: 0.0,
-            on_beat: false,
+            on_beat: 0.0,
             levels: BandValues::default(),
             hits: BandValues::default(),
             presence: BandValues::default(),
@@ -95,16 +95,11 @@ impl AudioFrameBuilder {
         self.beat_phase = clamp_unit(v);
     }
 
-    /// Mark the current accumulator as having seen a beat; the flag is
-    /// cleared by the next [`AudioFrameBuilder::snapshot`].
-    pub fn mark_on_beat(&mut self) {
-        self.on_beat = true;
-    }
-
-    /// Explicitly set the on-beat flag (used by the `i 0`/`i 1` codepath
-    /// where Synesthesia sends both edges).
-    pub fn set_on_beat(&mut self, v: bool) {
-        self.on_beat = v;
+    /// Update the beat envelope from `/audio/beat/onbeat`; clamps to
+    /// `0.0..=1.0`. Continuous — persists across snapshots like the
+    /// other level/intensity fields, so its natural decay is preserved.
+    pub fn set_on_beat(&mut self, v: f32) {
+        self.on_beat = clamp_unit(v);
     }
 
     /// Update one slot of the per-band levels view.
@@ -132,14 +127,13 @@ impl AudioFrameBuilder {
         self.fade = clamp_unit(v);
     }
 
-    /// Snapshot the current accumulator into an [`AudioFrame`] and clear
-    /// one-tick edge state (`on_beat`).
+    /// Snapshot the current accumulator into an [`AudioFrame`].
     ///
-    /// Continuous fields (levels, BPM, intensity, …) retain their last
-    /// observed value so the next frame reflects them even if no fresh
-    /// OSC message arrives between ticks.
+    /// Every field — including the `on_beat` envelope — retains its last
+    /// observed value so the next frame reflects it even if no fresh OSC
+    /// message arrives between ticks.
     pub fn snapshot(&mut self) -> AudioFrame {
-        let frame = AudioFrame {
+        AudioFrame {
             t: self.t,
             bpm: self.bpm,
             bpm_confidence: self.bpm_confidence,
@@ -150,9 +144,7 @@ impl AudioFrameBuilder {
             presence: self.presence,
             intensity: self.intensity,
             fade: self.fade,
-        };
-        self.on_beat = false;
-        frame
+        }
     }
 
     /// Read-only access to the current BPM, useful for snapshot-less
@@ -165,19 +157,20 @@ impl AudioFrameBuilder {
 
 /// Which Synesthesia band a given OSC message addresses.
 ///
-/// The address segment in front of `Level`/`Hits`/`Presence` (e.g.
-/// `bassLevel`, `midHighLevel`) maps onto one of these.
+/// The trailing path segment (`all`/`bass`/`mid`/`midhigh`/`high`) of a
+/// `/audio/level/*`, `/audio/hits/*`, or `/audio/presence/*` address maps
+/// onto one of these.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Band {
-    /// Aggregate across all bands (`/audio/level`, `/audio/hits`, …).
+    /// Aggregate across all bands (`/audio/level/all`, …).
     Whole,
-    /// Bass band (`/audio/bassLevel`, …).
+    /// Bass band (`/audio/level/bass`, …).
     Bass,
-    /// Mid band (`/audio/midLevel`, …).
+    /// Mid band (`/audio/level/mid`, …).
     Mid,
-    /// Mid-high band (`/audio/midHighLevel`, …).
+    /// Mid-high band (`/audio/level/midhigh`, …).
     MidHigh,
-    /// High band (`/audio/highLevel`, …).
+    /// High band (`/audio/level/high`, …).
     High,
 }
 
@@ -213,7 +206,7 @@ mod tests {
     use super::{AudioFrameBuilder, BPM_MAX, BPM_MIN, Band};
 
     #[test]
-    fn snapshot_preserves_continuous_fields_and_clears_on_beat() {
+    fn snapshot_preserves_all_continuous_fields_including_on_beat() {
         let mut b = AudioFrameBuilder::new();
         b.set_t(1.25);
         b.set_bpm(128.0);
@@ -224,23 +217,24 @@ mod tests {
         b.set_presence(Band::High, 0.2);
         b.set_intensity(0.6);
         b.set_fade(0.9);
-        b.mark_on_beat();
+        b.set_on_beat(0.9);
 
         let f1 = b.snapshot();
         assert!((f1.t - 1.25).abs() < f64::EPSILON);
         assert!((f1.bpm - 128.0).abs() < f32::EPSILON);
         assert!((f1.bpm_confidence - 0.8).abs() < 1e-6);
         assert!((f1.beat_phase - 0.5).abs() < 1e-6);
-        assert!(f1.on_beat);
+        assert!((f1.on_beat - 0.9).abs() < 1e-6);
         assert!((f1.levels.bass - 0.7).abs() < 1e-6);
         assert!((f1.hits.mid - 0.4).abs() < 1e-6);
         assert!((f1.presence.high - 0.2).abs() < 1e-6);
         assert!((f1.intensity - 0.6).abs() < 1e-6);
         assert!((f1.fade - 0.9).abs() < 1e-6);
 
-        // Second snapshot keeps continuous values, clears on_beat.
+        // Second snapshot keeps every continuous value — including the
+        // on_beat envelope (no per-tick clear).
         let f2 = b.snapshot();
-        assert!(!f2.on_beat);
+        assert!((f2.on_beat - 0.9).abs() < 1e-6);
         assert!((f2.bpm - 128.0).abs() < f32::EPSILON);
         assert!((f2.levels.bass - 0.7).abs() < 1e-6);
     }
@@ -289,10 +283,13 @@ mod tests {
     }
 
     #[test]
-    fn explicit_set_on_beat_overrides_mark() {
+    fn on_beat_envelope_clamps_and_persists() {
         let mut b = AudioFrameBuilder::new();
-        b.mark_on_beat();
-        b.set_on_beat(false);
-        assert!(!b.snapshot().on_beat);
+        b.set_on_beat(2.0);
+        // Clamped to 1.0 and retained across an empty snapshot.
+        assert!((b.snapshot().on_beat - 1.0).abs() < f32::EPSILON);
+        assert!((b.snapshot().on_beat - 1.0).abs() < f32::EPSILON);
+        b.set_on_beat(-1.0);
+        assert!(b.snapshot().on_beat.abs() < f32::EPSILON);
     }
 }

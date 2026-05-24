@@ -27,8 +27,11 @@ pub struct AudioFrame {
     /// Phase within the current beat, `0.0..=1.0`.
     pub beat_phase: f32,
 
-    /// True for the single tick when a beat is detected.
-    pub on_beat: bool,
+    /// Beat envelope, `0.0..=1.0`. Synesthesia's `/audio/beat/onbeat`
+    /// spikes toward `1.0` on a beat and decays over the following
+    /// frames — consumed directly so downstream effects (e.g. the M1
+    /// beat-flash) decay naturally rather than switching on/off.
+    pub on_beat: f32,
 
     /// Per-band signal levels.
     pub levels: BandValues,
