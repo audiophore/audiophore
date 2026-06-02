@@ -3,6 +3,9 @@ all-features = true
 
 [licenses]
 allow = [
+    # Audiophore's own workspace crates — the app is source-available,
+    # noncommercial (see LICENSE.md). Dependency licenses follow below.
+    "PolyForm-Noncommercial-1.0.0",
     "MIT",
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
