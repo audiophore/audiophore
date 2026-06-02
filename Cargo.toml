@@ -14,8 +14,8 @@ members = [
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
-authors = ["Aaron Cupp <aaron@mrcupp.com>"]
-license = "MIT OR Apache-2.0"
+authors = ["Aaron Cupp <mrcupp@mrcupp.com>"]
+license = "PolyForm-Noncommercial-1.0.0"
 repository = "https://github.com/audiophore/audiophore"
 homepage = "https://audiophore.dev"
 

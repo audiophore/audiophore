@@ -6,7 +6,7 @@ This repo holds the Audiophore application. The roadmap, hardware plan, deployme
 
 ## Status
 
-Pre-M1 skeleton. The Cargo workspace and crate layout exist; M1 implementation (Synesthesia OSC → WLED via E1.31, hardcoded) starts when dev hardware arrives.
+M1 software-complete. The full Synesthesia OSC → WLED-via-E1.31 pipeline is implemented and merged — OSC ingress, the audio frame bus, the sACN packer, the `monitor` and `run` CLIs, and a loopback integration test. The remaining M1 gate is hardware first-light (lighting a real WS2815 strip), not code.
 
 ## Workspace layout
 
@@ -36,13 +36,10 @@ cargo clippy --workspace --all-targets
 
 ## License
 
-Licensed under either of:
+Source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE.md). Free for any noncommercial purpose — personal use, research, education, hobby projects. Commercial use requires a separate license; contact <mrcupp@mrcupp.com>.
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <https://www.apache.org/licenses/LICENSE-2.0>)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or <https://opensource.org/licenses/MIT>)
-
-at your option.
+Audiophore backs a commercial product, so the application is noncommercial-licensed rather than permissively licensed. Earlier commits were published under `MIT OR Apache-2.0`; that grant is irrevocable for those snapshots, but this and all later versions are licensed as above.
 
 ### Contribution
 
-Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this work shall be licensed under the PolyForm Noncommercial License 1.0.0, without any additional terms or conditions.
