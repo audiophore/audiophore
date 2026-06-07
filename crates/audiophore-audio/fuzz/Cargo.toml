@@ -1,0 +1,24 @@
+# Standalone fuzz crate for the OSC ingress path. Its own `[workspace]` keeps it
+# out of the main cargo workspace, so stable `cargo build`/`clippy`/CI ignore it
+# entirely — fuzzing needs nightly + libfuzzer. Run with: `cargo +nightly fuzz run osc_decode`.
+[package]
+name = "audiophore-audio-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+audiophore-audio = { path = ".." }
+
+[[bin]]
+name = "osc_decode"
+path = "fuzz_targets/osc_decode.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

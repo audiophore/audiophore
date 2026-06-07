@@ -293,3 +293,82 @@ mod tests {
         assert!(b.snapshot().on_beat.abs() < f32::EPSILON);
     }
 }
+
+/// Property tests: no OSC value, however hostile (NaN, ±inf, huge, negative,
+/// subnormal), may push a snapshot field outside its documented range. The
+/// builder is the boundary between untrusted wire floats and the rest of the
+/// engine, so these invariants matter regardless of what Synesthesia (or
+/// anything spoofing it) sends.
+#[cfg(test)]
+mod prop_tests {
+    use super::{AudioFrameBuilder, BPM_MAX, BPM_MIN, Band};
+    use proptest::prelude::*;
+
+    const BANDS: [Band; 5] = [
+        Band::Whole,
+        Band::Bass,
+        Band::Mid,
+        Band::MidHigh,
+        Band::High,
+    ];
+
+    /// A finite value within the unit range — the contract for every clamped
+    /// `0.0..=1.0` field after `clamp_unit` (NaN folds to `0.0`).
+    fn in_unit(v: f32) -> bool {
+        v.is_finite() && (0.0..=1.0).contains(&v)
+    }
+
+    proptest! {
+        #[test]
+        fn unit_scalar_fields_stay_in_range(v in proptest::num::f32::ANY) {
+            let mut b = AudioFrameBuilder::new();
+            b.set_bpm_confidence(v);
+            b.set_beat_phase(v);
+            b.set_on_beat(v);
+            b.set_intensity(v);
+            b.set_fade(v);
+            let f = b.snapshot();
+            prop_assert!(in_unit(f.bpm_confidence));
+            prop_assert!(in_unit(f.beat_phase));
+            prop_assert!(in_unit(f.on_beat));
+            prop_assert!(in_unit(f.intensity));
+            prop_assert!(in_unit(f.fade));
+        }
+
+        #[test]
+        fn band_fields_stay_in_range(v in proptest::num::f32::ANY) {
+            let mut b = AudioFrameBuilder::new();
+            for band in BANDS {
+                b.set_level(band, v);
+                b.set_hit(band, v);
+                b.set_presence(band, v);
+            }
+            let f = b.snapshot();
+            for bands in [f.levels, f.hits, f.presence] {
+                prop_assert!(in_unit(bands.whole));
+                prop_assert!(in_unit(bands.bass));
+                prop_assert!(in_unit(bands.mid));
+                prop_assert!(in_unit(bands.mid_high));
+                prop_assert!(in_unit(bands.high));
+            }
+        }
+
+        #[test]
+        fn bpm_stays_in_synesthesia_range(v in proptest::num::f32::ANY) {
+            let mut b = AudioFrameBuilder::new();
+            b.set_bpm(v);
+            let bpm = b.snapshot().bpm;
+            prop_assert!(bpm.is_finite());
+            prop_assert!((BPM_MIN..=BPM_MAX).contains(&bpm));
+        }
+
+        #[test]
+        fn t_stays_finite_and_nonnegative(t in proptest::num::f64::ANY) {
+            let mut b = AudioFrameBuilder::new();
+            b.set_t(t);
+            let snap_t = b.snapshot().t;
+            prop_assert!(snap_t.is_finite());
+            prop_assert!(snap_t >= 0.0);
+        }
+    }
+}
