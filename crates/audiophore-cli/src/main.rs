@@ -48,9 +48,9 @@ enum Command {
 /// Arguments for `audiophore monitor`.
 #[derive(Debug, clap::Args)]
 struct MonitorArgs {
-    /// UDP port to listen on.
+    /// UDP port to listen on. Matches `run`'s `--osc-port`.
     #[arg(long, default_value_t = 9000)]
-    port: u16,
+    osc_port: u16,
 
     /// Address to bind. Defaults to all interfaces (`0.0.0.0`).
     #[arg(long, default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
@@ -225,7 +225,7 @@ async fn run_pipeline(args: RunArgs) -> Result<()> {
 /// (via [`Listener::recv_with_packet`]) rather than decoding the datagram
 /// a second time.
 async fn run_monitor(args: MonitorArgs) -> Result<()> {
-    let addr = SocketAddr::new(args.bind, args.port);
+    let addr = SocketAddr::new(args.bind, args.osc_port);
     let mut listener = Listener::bind(addr)
         .await
         .with_context(|| format!("binding OSC listener on {addr}"))?;
@@ -452,7 +452,7 @@ mod tests {
         let cli = Cli::try_parse_from(["audiophore", "monitor"]).expect("parse");
         match cli.command {
             super::Command::Monitor(args) => {
-                assert_eq!(args.port, 9000);
+                assert_eq!(args.osc_port, 9000);
                 assert!(!args.raw);
             }
             super::Command::Run(_) => panic!("expected Monitor"),
@@ -461,11 +461,11 @@ mod tests {
 
     #[test]
     fn cli_parses_monitor_with_port_and_raw() {
-        let cli = Cli::try_parse_from(["audiophore", "monitor", "--port", "9001", "--raw"])
+        let cli = Cli::try_parse_from(["audiophore", "monitor", "--osc-port", "9001", "--raw"])
             .expect("parse");
         match cli.command {
             super::Command::Monitor(args) => {
-                assert_eq!(args.port, 9001);
+                assert_eq!(args.osc_port, 9001);
                 assert!(args.raw);
             }
             super::Command::Run(_) => panic!("expected Monitor"),

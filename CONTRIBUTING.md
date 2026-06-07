@@ -44,7 +44,7 @@ A quick smoke test without hardware:
 
 ```sh
 # terminal 1 — print decoded Synesthesia frames
-cargo run -p audiophore-cli -- monitor --port 9000
+cargo run -p audiophore-cli -- monitor --osc-port 9000
 
 # terminal 2 — drive a WLED controller end to end
 cargo run -p audiophore-cli -- run --sacn-host <wled-ip> --pixels 300
