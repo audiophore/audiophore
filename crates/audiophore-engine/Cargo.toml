@@ -19,7 +19,7 @@ tracing = "0.1"
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "test-util"] }
 async-trait = "0.1"
-criterion = "0.5"
+criterion = "0.8"
 
 [[bench]]
 name = "arc_swap"

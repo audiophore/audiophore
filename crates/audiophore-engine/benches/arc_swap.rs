@@ -32,6 +32,7 @@
 )]
 
 use std::collections::HashMap;
+use std::hint::black_box;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Barrier};
 use std::thread;
@@ -39,7 +40,7 @@ use std::time::{Duration, Instant};
 
 use audiophore_core::{ResolvedFrame, Rgb, ZoneId, ZonePayload};
 use audiophore_engine::Bus;
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
 /// Build a representative `ResolvedFrame` carrying a 300-pixel WS2815
 /// payload (the M1 strip target). Keeps the snapshot's `Arc` content

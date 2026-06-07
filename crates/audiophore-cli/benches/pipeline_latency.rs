@@ -32,13 +32,15 @@
     reason = "bench-only: pixel-count fits u32; values are bounded"
 )]
 
+use std::hint::black_box;
+
 use audiophore_adapter_sacn::{
     DEFAULT_PRIORITY, MAX_RGB_PIXELS_PER_UNIVERSE, PacketBuilder, gamma_encode,
 };
 use audiophore_audio::{AudioFrameBuilder, dispatch_packet};
 use audiophore_core::{Rgb, Zone, ZoneId, ZoneKind, ZonePayload, ZoneSize};
 use audiophore_engine::map_m1;
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
 use rosc::{OscBundle, OscMessage, OscPacket, OscTime, OscType, encoder};
 
 /// M1 reference strip: 300-pixel WS2815, spanning universes 1 + 2.
