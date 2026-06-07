@@ -1,0 +1,96 @@
+name: release
+
+# STAGED — manual-dispatch only (see audiophore/planning#37). This workflow does
+# NOT auto-fire on push, PR, or tag. It builds the `audiophore` CLI for Linux +
+# macOS and stages a *draft* GitHub Release, so the build-and-attach plumbing is
+# ready ahead of the milestone without releasing anything by accident.
+#
+# Flip-on at M1 hardware acceptance (the v0.1.0 "proof of life"):
+#   1. Evaluate `release-plz` for tagging + (later, M2+) crates.io publishing.
+#   2. Add a `push: tags: ['v*']` trigger so version tags release automatically.
+#   3. Drop `--draft` (or just publish the staged draft).
+# Targets are Linux + macOS only for v0.1.0; Pi/aarch64 + Windows come later.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build audiophore CLI
+        run: cargo build --release --locked -p audiophore-cli --target ${{ matrix.target }}
+
+      - name: Package
+        run: |
+          staging="audiophore-${{ inputs.tag }}-${{ matrix.target }}"
+          mkdir "$staging"
+          cp "target/${{ matrix.target }}/release/audiophore" "$staging/"
+          cp README.md LICENSE.md "$staging/" 2>/dev/null || true
+          tar czf "$staging.tar.gz" "$staging"
+          shasum -a 256 "$staging.tar.gz" > "$staging.tar.gz.sha256"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: audiophore-${{ matrix.target }}
+          path: |
+            audiophore-*.tar.gz
+            audiophore-*.tar.gz.sha256
+
+  release:
+    name: draft release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ inputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --draft \
+            --title "${{ inputs.tag }}" \
+            --notes "Draft release staged by the \`release\` workflow. Review the attached binaries, then publish." \
+            dist/*
