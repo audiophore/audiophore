@@ -39,15 +39,23 @@ command -v cargo-tauri >/dev/null 2>&1 || cargo tauri --version >/dev/null 2>&1 
 [[ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]] \
   || die "TAURI_SIGNING_PRIVATE_KEY unset — needed to sign the updater artifact. See ~/.audiophore/secrets/README.md"
 
-SIGNED=0
-if [[ -n "${APPLE_SIGNING_IDENTITY:-}" && -n "${APPLE_API_KEY:-}" \
-      && -n "${APPLE_API_ISSUER:-}" && -n "${APPLE_API_KEY_PATH:-}" ]]; then
+# Three credential tiers: unsigned / signed-only / signed+notarized. Signing needs
+# only the Developer ID identity; notarization additionally needs the App Store
+# Connect API key. The updater (minisign) artifacts are signed + verified in every
+# tier — they don't depend on Apple at all.
+SIGNED=0; NOTARIZE=0
+if [[ -n "${APPLE_SIGNING_IDENTITY:-}" ]]; then
   SIGNED=1
-  note "Apple creds present → Developer ID signed + notarized build."
   security find-identity -v -p codesigning | grep -q "$APPLE_SIGNING_IDENTITY" \
     || warn "APPLE_SIGNING_IDENTITY '$APPLE_SIGNING_IDENTITY' not found by find-identity — build may fail to sign."
+  if [[ -n "${APPLE_API_KEY:-}" && -n "${APPLE_API_ISSUER:-}" && -n "${APPLE_API_KEY_PATH:-}" ]]; then
+    NOTARIZE=1
+    note "Developer ID cert + API key present → signed + notarized build."
+  else
+    warn "Cert present but API key vars missing → SIGNED-ONLY build (codesign verified; notarization skipped)."
+  fi
 else
-  warn "Apple creds absent → UNSIGNED build (updater artifacts still signed + verified; codesign/notarize checks skipped)."
+  warn "No signing identity → UNSIGNED build (updater artifacts still signed + verified; Apple checks skipped)."
 fi
 
 VERSION="$(grep -m1 '"version"' "$TAURI_DIR/tauri.conf.json" | sed -E 's/.*"version": *"([^"]+)".*/\1/')"
@@ -75,12 +83,17 @@ note "updater: $TARBALL"
 if [[ "$SIGNED" == 1 ]]; then
   note "codesign --verify"
   codesign --verify --verbose=4 "$APP" || die "codesign verification failed"
+else
+  warn "skipped codesign (unsigned build)"
+fi
+
+if [[ "$NOTARIZE" == 1 ]]; then
   note "stapler validate (notarization)"
   xcrun stapler validate "$APP" || warn "stapler validate failed — notarization may not have completed"
   note "spctl assessment"
   spctl -a -vv -t exec "$APP" || warn "spctl rejected the app"
 else
-  warn "skipped codesign/staple/spctl (unsigned build)"
+  warn "skipped staple/spctl (notarization not run — no API key)"
 fi
 
 # ── Publish updater feed ────────────────────────────────────────────────────
@@ -114,7 +127,8 @@ note "feed updated: https://gist.githubusercontent.com/IamMrCupp/$GIST_ID/raw/la
 # ── Bench summary ───────────────────────────────────────────────────────────
 printf '\n\033[1m── bench summary ──\033[0m\n'
 printf 'version            : %s (%s)\n' "$VERSION" "$UPD_ARCH"
-printf 'signed+notarized   : %s\n' "$([[ $SIGNED == 1 ]] && echo yes || echo 'no (unsigned)')"
+printf 'signed             : %s\n' "$([[ $SIGNED == 1 ]] && echo yes || echo no)"
+printf 'notarized          : %s\n' "$([[ $NOTARIZE == 1 ]] && echo yes || echo 'no (no API key)')"
 printf 'build wall time    : %ss  (note: deps warm; run `cargo clean -p audiophore-ui` first for a colder number)\n' "$BUILD_SECS"
 printf 'updater artifact   : %s\n' "$(basename "$TARBALL")"
 printf 'feed               : https://gist.githubusercontent.com/IamMrCupp/%s/raw/latest.json\n' "$GIST_ID"
