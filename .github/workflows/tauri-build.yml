@@ -1,0 +1,66 @@
+name: tauri-build
+
+# Guards the M2 packaging path (issue #39): verifies `cargo tauri build` still
+# produces the macOS .app + updater artifacts whenever the Tauri crate or its
+# config changes. Unsigned by Apple (no Developer ID / notarization in CI) — the
+# updater artifact is signed with an EPHEMERAL key generated per run, so no
+# secrets are stored. Path-filtered so the slow macOS bundle only runs when
+# audiophore-ui actually changes.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/audiophore-ui/**"
+      - ".github/workflows/tauri-build.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/audiophore-ui/**"
+      - ".github/workflows/tauri-build.yml"
+
+concurrency:
+  group: tauri-build-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  bundle:
+    name: tauri build (macos, unsigned)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@v1.19.1
+
+      - name: Install tauri CLI
+        # Prebuilt binary instead of compiling from source (~18m -> ~1m).
+        run: cargo binstall -y "tauri-cli@^2"
+
+      - name: Generate ephemeral updater key
+        run: cargo tauri signer generate --ci --password ci --write-keys "$RUNNER_TEMP/updater.key" --force
+
+      - name: Build (Apple-unsigned; updater-signed with the ephemeral key)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ runner.temp }}/updater.key
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ci
+        run: cargo tauri build
+
+      - name: Assert packaging artifacts exist
+        run: |
+          base="target/release/bundle/macos"
+          test -d "$base/Audiophore.app"         || { echo "::error::missing .app bundle"; exit 1; }
+          test -f "$base/Audiophore.app.tar.gz"  || { echo "::error::missing updater tarball"; exit 1; }
+          test -s "$base/Audiophore.app.tar.gz.sig" || { echo "::error::missing/empty updater signature"; exit 1; }
+          echo "✓ .app bundle, updater tarball, and signature all present"
