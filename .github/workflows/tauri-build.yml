@@ -41,8 +41,12 @@ jobs:
       - name: Cargo cache
         uses: Swatinem/rust-cache@v2
 
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@v1.19.1
+
       - name: Install tauri CLI
-        run: cargo install tauri-cli --version "^2" --locked
+        # Prebuilt binary instead of compiling from source (~18m -> ~1m).
+        run: cargo binstall -y "tauri-cli@^2"
 
       - name: Generate ephemeral updater key
         run: cargo tauri signer generate --ci --password ci --write-keys "$RUNNER_TEMP/updater.key" --force
