@@ -15,6 +15,21 @@ cargo deny check        # license + advisory gate (CI runs this)
 `rust-toolchain.toml` pins the toolchain; the workspace sets `unsafe_code = "deny"`
 and `missing_docs = "warn"`, so public items need doc comments and unsafe is off-limits.
 
+### Fuzzing the OSC ingress
+
+`audiophore-audio` decodes untrusted UDP, so its dispatch path has a
+coverage-guided fuzz target. It needs nightly + [`cargo-fuzz`](https://github.com/rust-fuzz/cargo-fuzz):
+
+```sh
+cargo install cargo-fuzz                        # once
+cargo +nightly fuzz run osc_decode              # from crates/audiophore-audio/
+```
+
+The invariant under test: no datagram, however malformed, may panic
+`dispatch_packet` — a decode *error* is the expected outcome. The fuzz crate is a
+standalone workspace (its own `[workspace]`), so it stays out of
+`cargo build --workspace` and the stable CI toolchain.
+
 A quick smoke test without hardware:
 
 ```sh
