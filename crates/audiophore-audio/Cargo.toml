@@ -18,6 +18,7 @@ tracing = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["net", "rt", "macros", "sync", "time", "rt-multi-thread"] }
+proptest = "1"
 
 [lints]
 workspace = true
