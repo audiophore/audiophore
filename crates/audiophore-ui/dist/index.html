@@ -23,10 +23,34 @@
       }
       h1 { font-weight: 600; margin: 0; }
       p { margin: 0; opacity: 0.6; }
+      #updater { font-variant-numeric: tabular-nums; }
     </style>
   </head>
   <body>
     <h1>Hello, Audiophore</h1>
     <p>Tauri 2 on macOS — M2 packaging spike</p>
+    <p id="updater">updater: checking…</p>
+
+    <!-- C.1.b: drive the updater from the vanilla frontend via the global API
+         (app.withGlobalTauri = true). Surfaces the feed-fetch result so the
+         packaging path is observable without a JS bundler. -->
+    <script>
+      (async () => {
+        const el = document.getElementById("updater");
+        try {
+          const updater = window.__TAURI__?.updater;
+          if (!updater?.check) {
+            el.textContent = "updater: global API unavailable";
+            return;
+          }
+          const update = await updater.check();
+          el.textContent = update
+            ? `updater: v${update.version} available`
+            : "updater: up to date";
+        } catch (e) {
+          el.textContent = `updater: error — ${e}`;
+        }
+      })();
+    </script>
   </body>
 </html>

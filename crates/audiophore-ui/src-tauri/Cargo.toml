@@ -24,6 +24,16 @@ tauri-build = { version = "2", features = [] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri = { version = "2", features = [] }
+# Re-added in C.1.b: `tauri::generate_context!` emits `serde_json` paths once a
+# plugin config (the updater block) is present, so the macro needs them in scope.
+# The C.1.a skeleton had dropped both as unused.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# C.1.b packaging spike: prove the updater path end-to-end against a test feed.
+# `process` provides the relaunch-after-update command. Both macOS-gated to match
+# the crate's `#![cfg(target_os = "macos")]` body.
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 # Spike-level overrides: Tauri's generated boilerplate and macro-expanded code do
 # not satisfy workspace pedantic + missing_docs + no-unwrap rules. CI runs with
