@@ -24,8 +24,15 @@ first-light. Everything below is unreleased.
   and multi-universe pixel partitioning.
 - `audiophore-cli` — `monitor` (decode and print frames, `--raw` packet dump) and
   `run` (full OSC → E1.31 pipeline) subcommands.
-- `audiophore-ui` — macOS-gated Tauri desktop spike (M2 prep; not in the M1 path).
+- `audiophore-ui` — macOS-gated Tauri desktop spike (M2 prep; not in the M1 path),
+  with Developer ID signing, notarization, and `tauri-plugin-updater` against a test
+  feed proving the M2 packaging path end to end.
 - Loopback integration test covering OSC ingress → mapping → sACN output.
+- Test depth: a coverage-guided `cargo-fuzz` target for the OSC ingress, `proptest`
+  invariants for `AudioFrameBuilder` clamping, and a criterion benchmark of the
+  per-frame pipeline latency.
+- CI and automation: CodeQL (Rust), Dependabot (`cargo` + `github-actions`), a
+  macOS Tauri-bundle check, and a staged manual-dispatch release workflow.
 
 ### Changed
 
