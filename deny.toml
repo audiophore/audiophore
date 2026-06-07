@@ -14,6 +14,9 @@ allow = [
     "Zlib",
     "CC0-1.0",
     "MPL-2.0",
+    # webpki-root-certs (Mozilla CA bundle, via reqwest in tauri-plugin-updater) —
+    # CDLA-Permissive-2.0 covers the certificate *data*; permissive, no copyleft.
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.92
 
