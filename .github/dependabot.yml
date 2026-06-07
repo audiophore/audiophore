@@ -1,0 +1,31 @@
+version: 2
+updates:
+  # Rust dependencies across the cargo workspace.
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+    groups:
+      # Roll routine minor/patch bumps into one PR to cut review noise;
+      # major bumps still open individually so they get a deliberate look.
+      cargo-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # GitHub Actions used by the workflows.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      github-actions:
+        update-types:
+          - minor
+          - patch
