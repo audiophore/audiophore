@@ -42,7 +42,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@v1.19.1
+        uses: cargo-bins/cargo-binstall@v1.20.0
 
       - name: Install tauri CLI
         # Prebuilt binary instead of compiling from source (~18m -> ~1m).
