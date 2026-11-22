@@ -363,7 +363,7 @@ mod tests {
         assert_eq!(&packet[40..44], &[0x00, 0x00, 0x00, 0x02]);
         // Source name: "audiophore-test" + null padding to 64 bytes
         assert_eq!(&packet[44..59], b"audiophore-test");
-        assert!(packet[44 + 64 - 1] == 0); // last source-name byte is null
+        assert_eq!(packet[44 + 64 - 1], 0); // last source-name byte is null
         // Priority
         assert_eq!(packet[108], DEFAULT_PRIORITY);
         // Sync universe
