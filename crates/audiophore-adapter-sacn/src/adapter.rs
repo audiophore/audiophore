@@ -408,7 +408,7 @@ mod tests {
     fn partitions_zero_universes_returns_empty() {
         let pixels = vec![black(); 10];
         let chunks = partition_rgb(&pixels, 0);
-        assert!(chunks.is_empty());
+        assert_eq!(chunks, Vec::<Vec<u8>>::new());
     }
 
     #[test]

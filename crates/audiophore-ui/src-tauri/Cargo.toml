@@ -32,7 +32,10 @@ serde_json = "1"
 # C.1.b packaging spike: prove the updater path end-to-end against a test feed.
 # `process` provides the relaunch-after-update command. Both macOS-gated to match
 # the crate's `#![cfg(target_os = "macos")]` body.
-tauri-plugin-updater = "2"
+# `zip` default feature dropped: it pulls zip 4.x (six open RUSTSEC advisories,
+# fixed only in zip >=9, which no stable updater release allows). Only needed for
+# zip-archive update feeds; our macOS updater artifacts are .app.tar.gz.
+tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
 tauri-plugin-process = "2"
 
 # Spike-level overrides: Tauri's generated boilerplate and macro-expanded code do
